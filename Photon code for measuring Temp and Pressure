@@ -1,0 +1,53 @@
+// This #include statement was automatically added by the Particle IDE.
+#include <Adafruit_BMP280.h>
+// This #include statement was automatically added by the Particle IDE.
+#include <Adafruit_Sensor.h>
+// Debug levels to print the error message
+#define DBGLVL0 1
+#define DBGLVL1 1
+#define DBGLVL2 1
+Adafruit_BMP280 bmp; // I2C
+void setup() {
+// To initialise Serial communication
+ Serial.begin(9600);
+ if (DBGLVL0) Serial.println(F("Device is on"));
+ if (bmp.begin((0x76))) {
+ if (DBGLVL1) {
+ Serial.println(F("Connection to BMP is successful"));
+ }
+ else{
+ if (DBGLVL1) Serial.println("Connection to BMP is not successful");
+ }
+ }
+}
+void loop() {
+ if (DBGLVL2) {
+ // To print the data on serial port
+Pranali Kothawade
+ Serial.print(F("Temperature = "));
+ // Reads the temperature from the temperature sensor
+ Serial.print(bmp.readTemperature());
+ // To get the temperature in Celsius
+ Serial.println(" *C");
+ }
+ // Store the temperature in String
+ String data = String(bmp.readTemperature());
+ // Publish the temperature to console
+ Particle.publish("temperature", data, PRIVATE);
+ if (DBGLVL2) {
+ // Print the data on serial port
+ Serial.print(F("Pressure = "));
+ // Reads the pressure from sensor
+ Serial.print(bmp.readPressure());
+ // To get the pressure in Pascals
+ Serial.println(" Pa");
+ }
+ // Store the pressure in String
+ String data1 = String(bmp.readPressure());
+ //Publish the Pressure to console
+ Particle.publish("pressure",data1, PRIVATE);
+ // Publish a message for pressure using twilio webhook
+ Particle.publish("twilio_sms", data1, PRIVATE);
+ // Delay of 10000 milliseconds
+ delay(10000);
+}
