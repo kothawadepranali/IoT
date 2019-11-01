@@ -1,0 +1,504 @@
+/* 
+ITS 5900/4900 Project 01 - Student version incomplete can be changed to make LED0 blink with SW0 and change rate with SW3
+Data: Feb 16, 2018
+Version: 2.51
+    - Modified version 2.5 for distribution to students
+    - Just blinks LED0 with SW0
+    - Students must use it complete the project
+    
+
+Description: For Photon with three LEDs, three switches
+SW0 controls LED0 and allows programming mode
+SW1 controls LED1 and in programming mode is the - (lower blink rate)
+SW2 controls LED2 and in programming mode is the + (increases blink rate)
+LED0 --- 510 Ohm --- D4
+LED1 --- 510 Ohm --- D5
+LED2 --- 510 Ohm --- D6
+SW0 --- 10 KOhm --- D0
+SW1 --- 10 KOhm --- D1
+SW2 --- 10 KOhm --- D2
+SW3 --- 10 KOhm --- D3
+*/
+
+#include "constant.h" // Update with your new constants.h filename!!!
+
+
+// State variables
+int ledState[NUMLEDS]; // 0 means led should be off, 1 means it should be blinking
+
+int ledOnOffCondition[NUMLEDS]; // Used while blinking 0 means it is off and blinking, 1 means it is on and blinking
+
+// Switch State
+int sw0State;
+int sw1State;
+int sw2State;
+int sw3State;
+
+// Switch Press State
+bool sw0ChangedStateToPressed = FALSE;
+bool sw1ChangedStateToPressed = FALSE;
+bool sw2ChangedStateToPressed = FALSE;
+bool sw3ChangedStateToPressed = FALSE;
+
+// Last Switch State
+int lastSw0State = LOW;  
+int lastSw1State = LOW;
+int lastSw2State = LOW;
+int lastSw3State = LOW;
+
+
+int sysState = SYSRUNNING; // sysState could be either SYSRUNNING OR SYSPROGRAMMING
+
+// Debounce variables
+unsigned long lastDebounceTimeSw0 = 0;  
+unsigned long lastDebounceTimeSw1 = 0;
+unsigned long lastDebounceTimeSw2 = 0;
+unsigned long lastDebounceTimeSw3 = 0;
+
+// Debounce delay for all switches
+unsigned long debounceDelay = 20; // the debounce time; increase if the output flickers
+
+// Debounce delay for programming mode
+unsigned long debounceDelayProgMode = 4000;
+
+// Create an array with as many elements as blink levels
+unsigned long blinkDuration[NUMBERBLINKLEVELS];
+
+// Create an array to hold the time for blinking leds
+unsigned long previousMillisLed[NUMLEDS];
+
+// Variable to keep track of for how long SW0 is pressed
+unsigned long sw0TimePressed;
+unsigned long sw1TimePressed;
+unsigned long sw2TimePressed;
+unsigned long sw3TimePressed;
+
+// Variable to keep track of which blinkDuration is chosen, initialized to zero
+// See constants.h for duration details
+int activeBlinkDuration = 0;
+
+
+
+void setup() {
+    
+    // General counting variable
+    int i;
+    
+    // Pin LEDS modes
+    pinMode(LED0, OUTPUT);
+    pinMode(LED1, OUTPUT);
+    pinMode(LED2, OUTPUT);
+    
+    // Pin Switch Modes
+    pinMode(SW0, INPUT);
+    pinMode(SW1, INPUT);
+    pinMode(SW2, INPUT);
+    pinMode(SW3, INPUT);
+    
+    // Initialize serial port
+    Serial.begin(9600);
+    if (DBGLVL0) Serial.println("Succesfully initialized serial port...");
+    
+    // Initialize blink levels
+    blinkDuration[0] = BLINKSLOW;
+    blinkDuration[1] = BLINKMEDIUM;
+    blinkDuration[2] = BLINKFAST;
+    if (DBGLVL0) {
+        Serial.println("Initialized blink durations array...");
+        Serial.println("Blink durations are: ");
+        for (i=0; i<NUMBERBLINKLEVELS; i++) Serial.printlnf ("%d) %d milliseconds", i, blinkDuration[i]);
+    }
+    
+    // Initially all LEDs should be off
+    for (i=0; i<NUMLEDS; i++) ledOnOffCondition[i]=0;
+  
+  }
+
+void loop() {
+
+
+if (sysState == SYSRUNNING) {
+  // General counter variables
+  int i;
+      
+      
+  // SW0
+  int readingSw0 = digitalRead(SW0);
+  // Debounce Code for SW0
+  if (readingSw0 != lastSw0State) {
+    lastDebounceTimeSw0 = millis();
+  }
+  lastSw0State = readingSw0; // save the reading. Next time through the loop, it'll be the lastButtonState:
+  
+  if ((millis() - lastDebounceTimeSw0) > debounceDelay) {
+    // whatever the reading is at, it's been there for longer than the debounce
+    // delay, so take it as the actual current state:
+
+    // if the button state has changed:
+    if (readingSw0 != sw0State) {
+      sw0State = readingSw0;
+    
+      // only toggle the LED if the new button state is HIGH
+      if (sw0State == HIGH) {
+        if (DBGLVL0) Serial.println("[Loop] SW0 Pressed");
+        sw0ChangedStateToPressed = TRUE;
+        sw0TimePressed = millis();
+      }
+      else{
+          if (DBGLVL0) Serial.println("[Loop] SW0 Released");
+          if (DBGLVL1) Serial.printlnf("[Loop] SW0 Was pressed for %ld milliseconds", millis() - sw0TimePressed);
+          
+          // If the the sw0TimePressed is more than 4 secs go into programming mode
+          if ((millis() - sw0TimePressed) >= debounceDelayProgMode) {
+               // Change sysState
+               if (DBGLVL2) Serial.println("Initializing Programing Mode.....");
+               sysState = SYSPROGRAMMING;
+               progMode();
+               if (DBGLVL2) Serial.println("System In Programming Mode");
+          } 
+      }
+    }
+  }
+  
+  
+  // SW1
+  int readingSw1 = digitalRead(SW1);
+  // Debounce Code for SW1
+  if (readingSw1 != lastSw1State) {
+      lastDebounceTimeSw1 = millis();
+  }
+  lastSw1State = readingSw1;// save the reading. Next time through the loop, it'll be the lastButtonState:
+  
+  if ((millis() - lastDebounceTimeSw1) > debounceDelay) {
+     // whatever the reading is at, it's been there for longer than the debounce
+     // delay, so take it as the actual current state:
+
+     // if the button state has changed:
+      if (readingSw1 != sw1State) {
+          sw1State = readingSw1;
+          
+          // only toggle the LED if the new button state is HIGH
+          if (sw1State == HIGH) {
+              if (DBGLVL0) Serial.println("[Loop] SW1 Pressed");
+              sw1ChangedStateToPressed = TRUE;
+              sw1TimePressed = millis();
+          }
+          else{
+              if (DBGLVL0) Serial.println("[Loop] SW1 Released");
+              if (DBGLVL1) Serial.printlnf("[Loop] SW1 Was pressed for %ld milliseconds", millis() - sw1TimePressed);
+              
+          }
+      }
+  }
+  
+  
+
+  // SW2
+  int readingSw2 = digitalRead(SW2);
+  // Debounce Code for SW2
+  if (readingSw2 != lastSw2State) {
+      lastDebounceTimeSw2 = millis();
+  }
+  lastSw2State = readingSw2;// save the reading. Next time through the loop, it'll be the lastButtonState:
+  
+  if ((millis() - lastDebounceTimeSw2) > debounceDelay) {
+       // whatever the reading is at, it's been there for longer than the debounce
+      // delay, so take it as the actual current state:
+
+      // if the button state has changed:
+      if (readingSw2 != sw2State) {
+          sw2State = readingSw2;
+          
+          // only toggle the LED if the new button state is HIGH
+          if (sw2State == HIGH) {
+              if (DBGLVL0) Serial.println("[Loop] SW2 Pressed");
+              sw2ChangedStateToPressed = TRUE;
+              sw2TimePressed = millis();
+          }
+          else{
+              if (DBGLVL0) Serial.println("[Loop] SW2 Released");
+              if (DBGLVL1) Serial.printlnf("[Loop] SW2 Was pressed for %ld milliseconds", millis() - sw2TimePressed);
+          }
+      }
+  }
+  
+  
+  
+  // SW3
+  int readingSw3 = digitalRead(SW3);
+  // Debounce Code for SW3
+  if (readingSw3 != lastSw3State) {
+    lastDebounceTimeSw3 = millis();
+  }
+  lastSw3State = readingSw3; // save the reading. Next time through the loop, it'll be the lastButtonState:
+
+  if ((millis() - lastDebounceTimeSw3) > debounceDelay) {
+       lastDebounceTimeSw3 = millis();
+      // whatever the reading is at, it's been there for longer than the debounce
+      // delay, so take it as the actual current state:
+
+      // if the button state has changed:
+      
+    if (readingSw3 != sw3State) {
+      sw3State = readingSw3;
+      
+      // only toggle the LED if the new button state is HIGH
+      if (sw3State == HIGH) {
+        if (DBGLVL0) Serial.println("[Loop] SW3 Pressed");
+        sw3ChangedStateToPressed = TRUE;
+      
+      }
+      else{
+        if (DBGLVL0) Serial.println("[Loop] SW3 Released");
+      }
+    }
+  }
+
+
+
+// Take action on state changes after checking all switches
+while (sw0ChangedStateToPressed) {
+    ledState[0] = !ledState[0];
+    if (DBGLVL0) Serial.printlnf("[loop][while] Changed state of LED0 to: %d (1= Blinking, 0= Permanently Off)", ledState[0]);
+    if (ledState[0] == 0) digitalWrite (LED0, LOW);
+    sw0ChangedStateToPressed = FALSE;    
+}
+
+while (sw1ChangedStateToPressed) {
+    ledState[1] = !ledState[1];
+    if (DBGLVL0) Serial.printlnf("[Loop][while] Changed state of LED1 to: %d (1= Blinking, 0= Permanently Off)", ledState[1]);
+    if (ledState[1] == 0) digitalWrite(LED1, LOW);
+    sw1ChangedStateToPressed = FALSE;
+}
+
+while (sw2ChangedStateToPressed) {
+    ledState[2] = !ledState[2];
+    if (DBGLVL0) Serial.printlnf("[Loop][while] Changed state of LED2 to: %d (1= Blinking, 0= Permanently Off)", ledState[2]);
+    if (ledState[2] == 0) digitalWrite(LED2, LOW);
+    sw2ChangedStateToPressed = FALSE;
+}
+
+while (sw3ChangedStateToPressed) {
+    activeBlinkDuration = (++activeBlinkDuration % NUMBERBLINKLEVELS); // Notice that we use the modulus operator % to cycle through the blink rate settings
+    if (DBGLVL0) Serial.printlnf("[loop][while] Active blink duration changed to %d. LEDs now blink at % ms.", activeBlinkDuration, blinkDuration[activeBlinkDuration]);
+    sw3ChangedStateToPressed = FALSE;    
+}
+
+//if (sysState) {
+// Blink LEDs if necessary
+for (i=0; i<NUMLEDS;i++){
+
+    unsigned long currentMillis = millis();
+    // if ledState[i] is 1 it means the led should be blinking, notice that
+    // if ledState[i] is 0 the led is permanently off and this is take care in the while statemens above
+    // when a change in the switch changes it to off
+    if (ledState[i]){
+        if ( (currentMillis - previousMillisLed[i]) >= blinkDuration[activeBlinkDuration] ){
+            // Save the time a change occurs
+            previousMillisLed[i] = currentMillis;
+            ledOnOffCondition[i] = !ledOnOffCondition[i];
+            // This code assumes i can only be 0 as there is only one LED to blink, modify it (suggestion you can use a switch statement) 
+            // to make it work with and NUMLEDS
+            switch (i) {
+                case 0:
+                digitalWrite(LED0, ledOnOffCondition[i]);
+                break;
+                
+                case 1:
+                digitalWrite(LED1, ledOnOffCondition[i]);
+                break;
+                
+                case 2:
+                digitalWrite(LED2, ledOnOffCondition[i]);
+            }
+           
+        } // end if current millis [i]
+    } // end if led State [i]
+
+    
+} // end for i
+
+}  
+
+if (sysState == SYSPROGRAMMING) {
+    
+    // SW0
+  int readingSw0 = digitalRead(SW0);
+  // Debounce Code for SW0
+  if (readingSw0 != lastSw0State) {
+     // reset the debouncing timer
+    lastDebounceTimeSw0 = millis();
+  }
+  lastSw0State = readingSw0; // save the reading. Next time through the loop, it'll be the lastButtonState:
+  
+  if ((millis() - lastDebounceTimeSw0) > debounceDelayProgMode) {
+       // whatever the reading is at, it's been there for longer than the debounce
+            // delay, so take it as the actual current state:
+
+            // if the button state has changed
+    if (readingSw0 != sw0State) {
+      
+      // save current state
+      sw0State = readingSw0;
+    
+      // Only toggle the led if the new button state is HIGH
+      if (sw0State == HIGH) {
+        if (DBGLVL0) Serial.println("[Loop] SW0 Pressed");
+        if (DBGLVL2) Serial.println("Exiting Programming Mode....");
+        // Change system state
+        sysState = SYSRUNNING;
+        progMode();
+        if (DBGLVL2) Serial.println("System in Normal Mode");
+        sw0TimePressed = millis();
+      }
+      else{
+          if (DBGLVL0) Serial.println("[Loop] SW0 Released");
+          if (DBGLVL1) Serial.printlnf("[Loop] SW0 Was pressed for %ld milliseconds", millis() - sw0TimePressed);
+         
+      }
+    }
+  }
+  
+     // SW1
+  int readingSw1 = digitalRead(SW1);
+  // Debounce Code for SW1
+  if (readingSw1 != lastSw1State) {
+      // rest the debouncing timer
+      lastDebounceTimeSw1 = millis();
+  }
+  lastSw1State = readingSw1;// save the reading. Next time through the loop, it'll be the lastButtonState:
+  
+  if ((millis() - lastDebounceTimeSw1) > debounceDelay) {
+  // whatever the reading is at, it's been there for longer than the debounce
+            // delay, so take it as the actual current state:
+
+            // if the button state has changed
+      if (readingSw1 != sw1State) {
+          // save current state
+          sw1State = readingSw1;
+          
+          // Only toggle the led if the new button state is HIGH
+          if (sw1State == HIGH) {
+              if (DBGLVL0) Serial.println("[Loop] SW1 Pressed");
+              sw1ChangedStateToPressed = TRUE;
+              sw1TimePressed = millis();
+          }
+          else{
+              if (DBGLVL0) Serial.println("[Loop] SW1 Released");
+              if (DBGLVL1) Serial.printlnf("[Loop] SW1 Was pressed for %ld milliseconds", millis() - sw1TimePressed);
+              
+          }
+      }
+  }
+  
+  
+
+  // SW2
+  int readingSw2 = digitalRead(SW2);
+  // Debounce Code for SW2
+  if (readingSw2 != lastSw2State) {
+      // reset the debouncing timer
+      lastDebounceTimeSw2 = millis();
+  }
+  lastSw2State = readingSw2;// save the reading. Next time through the loop, it'll be the lastButtonState:
+  
+  if ((millis() - lastDebounceTimeSw2) > debounceDelay) {
+     // whatever the reading is at, it's been there for longer than the debounce
+            // delay, so take it as the actual current state:
+
+            // if the button state has changed
+      if (readingSw2 != sw2State) {
+          // save current state
+          sw2State = readingSw2;
+          
+          // Only toggle the led if the new button state is HIGH
+          if (sw2State == HIGH) {
+              if (DBGLVL0) Serial.println("[Loop] SW2 Pressed");
+              sw2ChangedStateToPressed = TRUE;
+              sw2TimePressed = millis();
+          }
+          else{
+              if (DBGLVL0) Serial.println("[Loop] SW2 Released");
+              if (DBGLVL1) Serial.printlnf("[Loop] SW2 Was pressed for %ld milliseconds", millis() - sw2TimePressed);
+          }
+      }
+  }
+  
+while (sw2ChangedStateToPressed) {
+    activeBlinkDuration = (++activeBlinkDuration % NUMBERBLINKLEVELS); // Notice that we use the modulus operator % to cycle through the blink rate settings
+    if (DBGLVL0) Serial.printlnf("[loop][while] Active blink duration changed to %d. LEDs now blink at % ms.", activeBlinkDuration, blinkDuration[activeBlinkDuration]);
+    if (!ledState[0]) ledState[0] = HIGH;
+    sw2ChangedStateToPressed = FALSE;    
+    //ledState[0] = HIGH;
+}
+
+while (sw1ChangedStateToPressed) {
+    activeBlinkDuration = (--activeBlinkDuration % NUMBERBLINKLEVELS); // Notice that we use the modulus operator % to cycle through the blink rate settings
+    if (DBGLVL0) Serial.printlnf("[loop][while] Active blink duration changed to %d. LEDs now blink at % ms.", activeBlinkDuration, blinkDuration[activeBlinkDuration]);
+    if (!ledState[0]) ledState[0] = HIGH;
+    sw1ChangedStateToPressed = FALSE;
+}
+
+
+
+    unsigned long currentMillis = millis();
+    // if ledState[i] is 1 it means the led should be blinking, notice that
+    // if ledState[i] is 0 the led is permanently off and this is take care in the while statemens above
+    // when a change in the switch changes it to off
+   if (ledState[0]) {
+        if ( (currentMillis - previousMillisLed[0]) >= blinkDuration[activeBlinkDuration] ){
+            // Save the time a change occurs
+            previousMillisLed[0] = currentMillis;
+            ledOnOffCondition[0] = !ledOnOffCondition[0];
+            // This code assumes i can only be 0 as there is only one LED to blink, modify it (suggestion you can use a switch statement) 
+            // to make it work with and NUMLEDS
+           
+                digitalWrite(LED0, ledOnOffCondition[0]);
+                
+           
+}
+}
+
+   
+}
+
+} // end loop
+
+// Fuctions to enter or exit programming mode
+void progMode() {
+    
+    // turns leds off
+    digitalWrite(LED0, LOW);
+    digitalWrite(LED1, LOW);
+    digitalWrite(LED2, LOW);
+    delay(2000); // wait for 2 seconds
+    
+    // turn leds on
+    digitalWrite(LED0, HIGH);
+    digitalWrite(LED1, HIGH);
+    digitalWrite(LED2, HIGH);
+    delay(1000); // wait for 1 seconds
+    
+    // turn leds off
+    digitalWrite(LED0, LOW);
+    digitalWrite(LED1, LOW);
+    digitalWrite(LED2, LOW);
+    delay(1000);// wait for 1 seconds
+    
+    // turn leds off
+    digitalWrite(LED0, HIGH);
+    digitalWrite(LED1, HIGH);
+    digitalWrite(LED2, HIGH);
+    delay(1000); // wait for 1 seconds
+    
+    // turn leds off
+    digitalWrite(LED0, LOW);
+    digitalWrite(LED1, LOW);
+    digitalWrite(LED2, LOW);
+    
+    // to make sure leds are off
+    ledState[0] = LOW;
+    ledState[1] = LOW;
+    ledState[2] = LOW;
+
+}
